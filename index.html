@@ -322,9 +322,10 @@ function handleSignIn() {
   const client = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
+    prompt: 'select_account',
     callback: onTokenResponse,
   });
-  client.requestAccessToken();
+  client.requestAccessToken({ prompt: 'select_account' });
 }
 
 function onTokenResponse(response) {
