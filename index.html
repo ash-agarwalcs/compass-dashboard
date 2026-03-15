@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CloudSense Compass — Live Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242836;
+    --border: #2e3345;
+    --text: #e4e6ed;
+    --text-dim: #8b8fa3;
+    --accent: #6c63ff;
+    --accent2: #00d1b2;
+    --red: #ff6b6b;
+    --orange: #ffa94d;
+    --green: #51cf66;
+    --blue: #339af0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  header {
+    padding: 24px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  header h1 { font-size: 20px; font-weight: 600; }
+  header h1 span { color: var(--accent); }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .meta { font-size: 13px; color: var(--text-dim); display: flex; gap: 16px; align-items: center; }
+  .meta .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; }
+  .meta.error .dot { background: var(--red); }
+  .meta.pending .dot { background: var(--orange); }
+  main { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+
+  .user-chip {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px 4px 4px;
+    font-size: 13px;
+  }
+  .user-chip img { width: 24px; height: 24px; border-radius: 50%; }
+  .user-chip .signout {
+    background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 12px; margin-left: 4px;
+  }
+  .user-chip .signout:hover { color: var(--red); }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .kpi .label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .kpi .value { font-size: 28px; font-weight: 700; }
+  .kpi .sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  .kpi .value.green { color: var(--green); }
+  .kpi .value.red { color: var(--red); }
+  .kpi .value.blue { color: var(--blue); }
+  .kpi .value.orange { color: var(--orange); }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 32px;
+  }
+  @media (max-width: 800px) { .two-col { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 12px; color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+
+  .bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .bar-row .bar-label { width: 160px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-row .bar-track { flex: 1; height: 24px; background: var(--surface2); border-radius: 6px; overflow: hidden; }
+  .bar-row .bar-fill { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 8px; font-size: 11px; font-weight: 600; min-width: 30px; transition: width 0.6s ease; }
+  .bar-row .bar-count { width: 40px; text-align: right; font-size: 13px; color: var(--text-dim); }
+
+  .status-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  }
+  .status-badge.success { background: rgba(81, 207, 102, 0.15); color: var(--green); }
+  .status-badge.error { background: rgba(255, 107, 107, 0.15); color: var(--red); }
+
+  .recent-table { max-height: 400px; overflow-y: auto; }
+
+  .center-screen {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 60vh; gap: 16px; text-align: center;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #sign-in-screen { display: none; }
+  #sign-in-screen .lock-icon { font-size: 48px; margin-bottom: 8px; }
+  #sign-in-screen h2 { font-size: 22px; margin-bottom: 8px; }
+  #sign-in-screen p { color: var(--text-dim); font-size: 14px; max-width: 400px; line-height: 1.6; margin-bottom: 24px; }
+  #google-signin-btn {
+    background: white; color: #333; border: none; border-radius: 8px;
+    padding: 12px 24px; font-size: 15px; font-weight: 500; cursor: pointer;
+    display: flex; align-items: center; gap: 10px; transition: box-shadow 0.2s;
+  }
+  #google-signin-btn:hover { box-shadow: 0 4px 16px rgba(108, 99, 255, 0.3); }
+  #google-signin-btn svg { width: 20px; height: 20px; }
+
+  #loading { display: none; }
+
+  #error-msg {
+    display: none;
+    background: rgba(255, 107, 107, 0.1); border: 1px solid var(--red); border-radius: 12px;
+    padding: 24px; text-align: center; margin: 40px auto; max-width: 600px;
+  }
+  #error-msg h2 { color: var(--red); margin-bottom: 8px; }
+  #error-msg p { color: var(--text-dim); font-size: 14px; line-height: 1.6; }
+
+  #setup-msg {
+    display: none;
+    background: rgba(255, 169, 77, 0.1); border: 1px solid var(--orange); border-radius: 12px;
+    padding: 24px; text-align: center; margin: 40px auto; max-width: 700px;
+  }
+  #setup-msg h2 { color: var(--orange); margin-bottom: 12px; }
+  #setup-msg p { color: var(--text-dim); font-size: 14px; line-height: 1.8; text-align: left; }
+  #setup-msg code { background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  #setup-msg ol { color: var(--text-dim); font-size: 14px; line-height: 2; text-align: left; padding-left: 20px; }
+
+  #dashboard { display: none; }
+
+  footer { text-align: center; padding: 24px; color: var(--text-dim); font-size: 12px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>CloudSense</span> Compass Dashboard</h1>
+  <div class="header-right">
+    <div class="meta" id="status-meta">
+      <span><span class="dot"></span> <span id="status-label">Waiting</span></span>
+      <span id="last-refresh"></span>
+    </div>
+    <div id="user-chip-container"></div>
+  </div>
+</header>
+
+<main>
+  <!-- 1. Sign-in screen (shown first) -->
+  <div id="sign-in-screen" class="center-screen">
+    <div class="lock-icon">&#128274;</div>
+    <h2>Sign in to view dashboard</h2>
+    <p>This dashboard uses your Google account to read the shared sheet. Only people with sheet access can view the data.</p>
+    <button id="google-signin-btn">
+      <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Sign in with Google
+    </button>
+  </div>
+
+  <!-- 2. Loading spinner -->
+  <div id="loading" class="center-screen">
+    <div class="spinner"></div>
+    <p style="color: var(--text-dim);">Fetching sheet data...</p>
+  </div>
+
+  <!-- 3. Setup instructions (shown if CLIENT_ID not set) -->
+  <div id="setup-msg">
+    <h2>One-time setup required</h2>
+    <p>To enable Google Sign-In, you need a <strong>Google Cloud OAuth Client ID</strong>. This is a one-time setup:</p>
+    <ol>
+      <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--blue)">Google Cloud Console &rarr; Credentials</a></li>
+      <li>Create a project (or pick an existing one)</li>
+      <li>Enable the <strong>Google Sheets API</strong> under "APIs &amp; Services"</li>
+      <li>Create an <strong>OAuth 2.0 Client ID</strong> (type: Web application)</li>
+      <li>Add your hosting domain to <em>Authorized JavaScript origins</em> (e.g. <code>http://localhost:8000</code> for local dev)</li>
+      <li>Copy the Client ID and paste it in this file at the top of the <code>&lt;script&gt;</code> section:<br>
+        <code>const CLIENT_ID = 'your-id.apps.googleusercontent.com';</code></li>
+    </ol>
+  </div>
+
+  <!-- 4. Access denied -->
+  <div id="error-msg">
+    <h2 id="error-title">Access denied</h2>
+    <p id="error-body">You don't have access to this Google Sheet. Ask the sheet owner to share it with your Google account.</p>
+  </div>
+
+  <!-- 5. Dashboard -->
+  <div id="dashboard">
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="label">Total Events</div>
+        <div class="value" id="kpi-total">-</div>
+        <div class="sub" id="kpi-total-sub"></div>
+      </div>
+      <div class="kpi">
+        <div class="label">Tool Calls</div>
+        <div class="value blue" id="kpi-calls">-</div>
+        <div class="sub" id="kpi-calls-sub"></div>
+      </div>
+      <div class="kpi">
+        <div class="label">Success Rate</div>
+        <div class="value green" id="kpi-success">-</div>
+        <div class="sub" id="kpi-success-sub"></div>
+      </div>
+      <div class="kpi">
+        <div class="label">Avg Duration</div>
+        <div class="value orange" id="kpi-duration">-</div>
+        <div class="sub" id="kpi-duration-sub"></div>
+      </div>
+      <div class="kpi">
+        <div class="label">Unique Sessions</div>
+        <div class="value" id="kpi-sessions">-</div>
+        <div class="sub" id="kpi-sessions-sub"></div>
+      </div>
+      <div class="kpi">
+        <div class="label">Unique Users</div>
+        <div class="value" id="kpi-users">-</div>
+        <div class="sub" id="kpi-users-sub"></div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h3>Tool Usage Breakdown</h3>
+        <div id="tool-bars"></div>
+      </div>
+      <div class="card">
+        <h3>Avg Duration by Tool (ms)</h3>
+        <div id="duration-bars"></div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h3>Daily Activity</h3>
+        <div id="daily-bars"></div>
+      </div>
+      <div class="card">
+        <h3>Users</h3>
+        <div id="user-bars"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 32px;">
+      <h3>Recent Tool Calls</h3>
+      <div class="recent-table">
+        <table>
+          <thead><tr><th>Time</th><th>User</th><th>Tool</th><th>Status</th><th>Duration</th><th>Result Size</th></tr></thead>
+          <tbody id="recent-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  Auto-refreshes every 60 seconds &middot; Authenticated via Google &middot; Only shared users can view
+</footer>
+
+<script src="https://accounts.google.com/gsi/client"></script>
+<script src="https://apis.google.com/js/api.js"></script>
+<script>
+// ============================================================
+// CONFIGURATION — fill these in
+// ============================================================
+const CLIENT_ID = '';  // <-- Paste your Google Cloud OAuth Client ID here
+const SHEET_ID  = '1VN5yly-_01Jyau3zF94VUDTGj36fzyPMWFyEC47-6tw';
+const RANGE     = 'Raw Data!A:N';
+const SCOPES    = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+
+const COLORS = ['#6c63ff','#00d1b2','#339af0','#ffa94d','#ff6b6b','#845ef7','#20c997','#fab005'];
+
+let accessToken = null;
+let refreshTimer = null;
+
+// ============================================================
+// INIT
+// ============================================================
+window.addEventListener('load', () => {
+  if (!CLIENT_ID) {
+    document.getElementById('setup-msg').style.display = 'block';
+    document.getElementById('status-meta').className = 'meta pending';
+    document.getElementById('status-label').textContent = 'Setup needed';
+    return;
+  }
+  document.getElementById('sign-in-screen').style.display = 'flex';
+  document.getElementById('status-label').textContent = 'Not signed in';
+
+  document.getElementById('google-signin-btn').addEventListener('click', handleSignIn);
+});
+
+function handleSignIn() {
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: onTokenResponse,
+  });
+  client.requestAccessToken();
+}
+
+function onTokenResponse(response) {
+  if (response.error) {
+    showError('Sign-in failed', response.error_description || 'Could not authenticate with Google.');
+    return;
+  }
+  accessToken = response.access_token;
+
+  if (response.id_token) {
+    try {
+      const payload = JSON.parse(atob(response.id_token.split('.')[1]));
+      showUserChip(payload.name, payload.picture, payload.email);
+    } catch {}
+  }
+
+  document.getElementById('sign-in-screen').style.display = 'none';
+  document.getElementById('loading').style.display = 'flex';
+  fetchSheetData();
+  refreshTimer = setInterval(fetchSheetData, 60000);
+}
+
+// ============================================================
+// FETCH VIA SHEETS API (respects sharing permissions)
+// ============================================================
+async function fetchSheetData() {
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(RANGE)}`;
+    const resp = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+
+    if (resp.status === 403 || resp.status === 404) {
+      clearInterval(refreshTimer);
+      showError('Access denied', 'You don\'t have permission to view this sheet. Ask the owner to share it with your Google account.');
+      return;
+    }
+    if (resp.status === 401) {
+      clearInterval(refreshTimer);
+      showError('Session expired', 'Your sign-in session expired. Please refresh the page and sign in again.');
+      return;
+    }
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      throw new Error(errData.error?.message || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const rows = sheetsToObjects(data.values || []);
+    if (rows.length === 0) {
+      showError('No data', 'The sheet exists but has no data rows.');
+      return;
+    }
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-msg').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+    document.getElementById('status-meta').className = 'meta';
+    document.getElementById('status-label').textContent = 'Live';
+    document.getElementById('last-refresh').textContent = 'Refreshed ' + new Date().toLocaleTimeString();
+
+    render(rows);
+  } catch (err) {
+    showError('Error loading data', err.message);
+    console.error('Sheets API error:', err);
+  }
+}
+
+function sheetsToObjects(values) {
+  if (values.length < 2) return [];
+  const headers = values[0];
+  return values.slice(1)
+    .filter(row => row.length >= 2 && row[0])
+    .map(row => {
+      const obj = {};
+      headers.forEach((h, i) => { obj[h.trim()] = (row[i] || '').trim(); });
+      return obj;
+    });
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+function showError(title, body) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('sign-in-screen').style.display = 'none';
+  document.getElementById('error-msg').style.display = 'block';
+  document.getElementById('error-title').textContent = title;
+  document.getElementById('error-body').textContent = body;
+  document.getElementById('status-meta').className = 'meta error';
+  document.getElementById('status-label').textContent = 'Error';
+}
+
+function showUserChip(name, picture, email) {
+  const container = document.getElementById('user-chip-container');
+  container.innerHTML = `
+    <div class="user-chip">
+      ${picture ? `<img src="${picture}" alt="">` : ''}
+      <span>${name || email || 'User'}</span>
+      <button class="signout" onclick="signOut()" title="Sign out">&times;</button>
+    </div>
+  `;
+}
+
+function signOut() {
+  accessToken = null;
+  clearInterval(refreshTimer);
+  google.accounts.oauth2.revoke(accessToken, () => {});
+  document.getElementById('user-chip-container').innerHTML = '';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('error-msg').style.display = 'none';
+  document.getElementById('sign-in-screen').style.display = 'flex';
+  document.getElementById('status-meta').className = 'meta pending';
+  document.getElementById('status-label').textContent = 'Not signed in';
+}
+
+// ============================================================
+// RENDERING (same as before)
+// ============================================================
+function renderBars(containerId, data) {
+  const el = document.getElementById(containerId);
+  const max = Math.max(...data.map(d => d.value), 1);
+  el.innerHTML = data.map((d, i) => `
+    <div class="bar-row">
+      <div class="bar-label" title="${d.label}">${d.label}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${(d.value/max*100).toFixed(1)}%;background:${COLORS[i % COLORS.length]}">${d.display || d.value}</div>
+      </div>
+      <div class="bar-count">${d.display || d.value}</div>
+    </div>
+  `).join('');
+}
+
+function formatDuration(ms) {
+  const n = parseFloat(ms);
+  if (isNaN(n)) return '-';
+  return n < 1000 ? n.toFixed(0) + 'ms' : (n / 1000).toFixed(1) + 's';
+}
+
+function formatTime(ts) {
+  if (!ts) return '-';
+  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+  catch { return ts; }
+}
+
+function render(rows) {
+  const toolCalls = rows.filter(r => r.event === 'tool_call');
+  const sessions = new Set(rows.map(r => r.session_id).filter(Boolean));
+  const users = new Set(rows.map(r => r.user).filter(Boolean));
+  const successCalls = toolCalls.filter(r => r.status === 'success');
+  const errorCalls = toolCalls.filter(r => r.status !== 'success' && r.status);
+  const durations = toolCalls.map(r => parseFloat(r.duration_ms)).filter(n => !isNaN(n));
+  const avgDuration = durations.length ? durations.reduce((a,b) => a+b, 0) / durations.length : 0;
+
+  document.getElementById('kpi-total').textContent = rows.length;
+  document.getElementById('kpi-total-sub').textContent = `${rows.filter(r=>r.event==='session_start').length} sessions, ${toolCalls.length} calls`;
+  document.getElementById('kpi-calls').textContent = toolCalls.length;
+  document.getElementById('kpi-calls-sub').textContent = `${new Set(toolCalls.map(r=>r.tool)).size} unique tools`;
+  const successRate = toolCalls.length ? (successCalls.length / toolCalls.length * 100) : 0;
+  document.getElementById('kpi-success').textContent = successRate.toFixed(1) + '%';
+  document.getElementById('kpi-success-sub').textContent = `${successCalls.length} ok / ${errorCalls.length} errors`;
+  document.getElementById('kpi-success').className = 'value ' + (successRate >= 95 ? 'green' : successRate >= 80 ? 'orange' : 'red');
+  document.getElementById('kpi-duration').textContent = formatDuration(avgDuration);
+  document.getElementById('kpi-duration-sub').textContent = `across ${durations.length} calls`;
+  document.getElementById('kpi-sessions').textContent = sessions.size;
+  document.getElementById('kpi-sessions-sub').textContent = 'unique session IDs';
+  document.getElementById('kpi-users').textContent = users.size;
+  document.getElementById('kpi-users-sub').textContent = [...users].join(', ') || '-';
+
+  const toolCounts = {};
+  toolCalls.forEach(r => { toolCounts[r.tool] = (toolCounts[r.tool] || 0) + 1; });
+  renderBars('tool-bars', Object.entries(toolCounts).sort((a,b) => b[1] - a[1]).map(([label, value]) => ({ label, value })));
+
+  const toolDurations = {}, toolDurCounts = {};
+  toolCalls.forEach(r => {
+    const d = parseFloat(r.duration_ms);
+    if (!isNaN(d)) { toolDurations[r.tool] = (toolDurations[r.tool] || 0) + d; toolDurCounts[r.tool] = (toolDurCounts[r.tool] || 0) + 1; }
+  });
+  renderBars('duration-bars', Object.keys(toolDurations)
+    .map(t => ({ label: t, value: Math.round(toolDurations[t] / toolDurCounts[t]), display: formatDuration(toolDurations[t] / toolDurCounts[t]) }))
+    .sort((a,b) => b.value - a.value));
+
+  const dailyCounts = {};
+  rows.forEach(r => { if (r.date) { dailyCounts[r.date] = (dailyCounts[r.date] || 0) + 1; } });
+  const dailyData = Object.entries(dailyCounts).sort((a,b) => a[0].localeCompare(b[0])).map(([label, value]) => ({ label, value }));
+  renderBars('daily-bars', dailyData.length ? dailyData : [{ label: 'No data', value: 0 }]);
+
+  const userCounts = {};
+  toolCalls.forEach(r => { if (r.user) { userCounts[r.user] = (userCounts[r.user] || 0) + 1; } });
+  const userData = Object.entries(userCounts).sort((a,b) => b[1] - a[1]).map(([label, value]) => ({ label, value }));
+  renderBars('user-bars', userData.length ? userData : [{ label: 'No data', value: 0 }]);
+
+  const recent = [...toolCalls].reverse().slice(0, 50);
+  document.getElementById('recent-tbody').innerHTML = recent.map(r => `
+    <tr>
+      <td>${formatTime(r.timestamp)}</td>
+      <td>${r.user || '-'}</td>
+      <td><strong>${r.tool || '-'}</strong></td>
+      <td><span class="status-badge ${r.status === 'success' ? 'success' : 'error'}">${r.status || '-'}</span></td>
+      <td>${formatDuration(r.duration_ms)}</td>
+      <td>${r.result_size || '-'}</td>
+    </tr>
+  `).join('');
+}
+</script>
+</body>
+</html>
