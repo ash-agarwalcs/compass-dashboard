@@ -110,6 +110,27 @@
   }
   .status-badge.success { background: rgba(81, 207, 102, 0.15); color: var(--green); }
   .status-badge.error { background: rgba(255, 107, 107, 0.15); color: var(--red); }
+  .status-badge.open { background: rgba(255, 169, 77, 0.15); color: var(--orange); }
+  .status-badge.in-progress { background: rgba(51, 154, 240, 0.15); color: var(--blue); }
+  .status-badge.done { background: rgba(81, 207, 102, 0.15); color: var(--green); }
+  .status-badge.wontfix { background: rgba(139, 143, 163, 0.15); color: var(--text-dim); }
+
+  .type-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  }
+  .type-badge.bug { background: rgba(255, 107, 107, 0.15); color: var(--red); }
+  .type-badge.feature { background: rgba(108, 99, 255, 0.15); color: var(--accent); }
+
+  .tab-bar { display: flex; gap: 0; margin-bottom: 24px; border-bottom: 2px solid var(--border); }
+  .tab-btn {
+    background: none; border: none; color: var(--text-dim); font-size: 14px; font-weight: 500;
+    padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 
   .recent-table { max-height: 400px; overflow-y: auto; }
 
@@ -215,6 +236,12 @@
 
   <!-- 5. Dashboard -->
   <div id="dashboard">
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('telemetry')">Telemetry</button>
+      <button class="tab-btn" onclick="switchTab('feedback')">Feedback <span id="feedback-count-badge"></span></button>
+    </div>
+
+    <div id="tab-telemetry" class="tab-panel active">
     <div class="kpi-grid">
       <div class="kpi">
         <div class="label">Total Events</div>
@@ -279,6 +306,42 @@
         </table>
       </div>
     </div>
+    </div><!-- /tab-telemetry -->
+
+    <div id="tab-feedback" class="tab-panel">
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="label">Total Feedback</div>
+          <div class="value" id="fb-kpi-total">-</div>
+          <div class="sub" id="fb-kpi-total-sub"></div>
+        </div>
+        <div class="kpi">
+          <div class="label">Bugs</div>
+          <div class="value red" id="fb-kpi-bugs">-</div>
+          <div class="sub" id="fb-kpi-bugs-sub"></div>
+        </div>
+        <div class="kpi">
+          <div class="label">Feature Requests</div>
+          <div class="value" id="fb-kpi-features">-</div>
+          <div class="sub" style="color: var(--accent);" id="fb-kpi-features-sub"></div>
+        </div>
+        <div class="kpi">
+          <div class="label">Open</div>
+          <div class="value orange" id="fb-kpi-open">-</div>
+          <div class="sub" id="fb-kpi-open-sub"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom: 32px;">
+        <h3>All Feedback</h3>
+        <div class="recent-table">
+          <table>
+            <thead><tr><th>Date</th><th>Type</th><th>Title</th><th>Description</th><th>User</th><th>Status</th></tr></thead>
+            <tbody id="feedback-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- /tab-feedback -->
   </div>
 </main>
 
@@ -295,6 +358,7 @@
 const CLIENT_ID = '52159061649-vteijgnnoalaav6b5gvarqq9vbb2s8c1.apps.googleusercontent.com';  // <-- Paste your Google Cloud OAuth Client ID here
 const SHEET_ID  = '1VN5yly-_01Jyau3zF94VUDTGj36fzyPMWFyEC47-6tw';
 const RANGE     = 'Raw Data!A:N';
+const FB_RANGE  = 'Feedback!A:H';
 const SCOPES    = 'https://www.googleapis.com/auth/spreadsheets.readonly';
 
 const COLORS = ['#6c63ff','#00d1b2','#339af0','#ffa94d','#ff6b6b','#845ef7','#20c997','#fab005'];
@@ -380,6 +444,17 @@ async function fetchSheetData() {
       return;
     }
 
+    // Fetch feedback tab (may not exist yet)
+    let fbRows = [];
+    try {
+      const fbUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(FB_RANGE)}`;
+      const fbResp = await fetch(fbUrl, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+      if (fbResp.ok) {
+        const fbData = await fbResp.json();
+        fbRows = sheetsToObjects(fbData.values || []);
+      }
+    } catch {}
+
     document.getElementById('loading').style.display = 'none';
     document.getElementById('error-msg').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
@@ -388,6 +463,7 @@ async function fetchSheetData() {
     document.getElementById('last-refresh').textContent = 'Refreshed ' + new Date().toLocaleTimeString();
 
     render(rows);
+    renderFeedback(fbRows);
   } catch (err) {
     showError('Error loading data', err.message);
     console.error('Sheets API error:', err);
@@ -530,6 +606,73 @@ function render(rows) {
       <td>${r.result_size || '-'}</td>
     </tr>
   `).join('');
+}
+
+// ============================================================
+// TABS
+// ============================================================
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab-btn[onclick="switchTab('${tab}')"]`).classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+}
+
+// ============================================================
+// FEEDBACK RENDERING
+// ============================================================
+function fbStatusClass(status) {
+  if (!status) return 'open';
+  const s = status.toLowerCase().replace(/[^a-z]/g, '');
+  if (s === 'done' || s === 'closed' || s === 'resolved') return 'done';
+  if (s === 'inprogress' || s === 'wip') return 'in-progress';
+  if (s === 'wontfix' || s === 'rejected' || s === 'declined') return 'wontfix';
+  return 'open';
+}
+
+function fbStatusLabel(status) {
+  if (!status) return 'Open';
+  return status;
+}
+
+function formatDate(ts) {
+  if (!ts) return '-';
+  try { return new Date(ts).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }); }
+  catch { return ts; }
+}
+
+function renderFeedback(rows) {
+  const bugs = rows.filter(r => r.type === 'bug');
+  const features = rows.filter(r => r.type === 'feature_request');
+  const open = rows.filter(r => fbStatusClass(r.status) === 'open');
+
+  document.getElementById('fb-kpi-total').textContent = rows.length;
+  document.getElementById('fb-kpi-total-sub').textContent = rows.length ? 'submissions' : 'No feedback yet';
+  document.getElementById('fb-kpi-bugs').textContent = bugs.length;
+  document.getElementById('fb-kpi-bugs-sub').textContent = bugs.filter(r => fbStatusClass(r.status) === 'open').length + ' open';
+  document.getElementById('fb-kpi-features').textContent = features.length;
+  document.getElementById('fb-kpi-features-sub').textContent = features.filter(r => fbStatusClass(r.status) === 'open').length + ' open';
+  document.getElementById('fb-kpi-open').textContent = open.length;
+  document.getElementById('fb-kpi-open-sub').textContent = 'need attention';
+
+  // Badge on the tab
+  const badge = document.getElementById('feedback-count-badge');
+  badge.textContent = open.length > 0 ? `(${open.length})` : '';
+  badge.style.color = open.length > 0 ? 'var(--orange)' : '';
+
+  const sorted = [...rows].reverse();
+  document.getElementById('feedback-tbody').innerHTML = sorted.length
+    ? sorted.map(r => `
+      <tr>
+        <td>${formatDate(r.timestamp)}</td>
+        <td><span class="type-badge ${r.type === 'bug' ? 'bug' : 'feature'}">${r.type === 'bug' ? 'Bug' : 'Feature'}</span></td>
+        <td><strong>${r.title || '-'}</strong></td>
+        <td style="max-width:300px;white-space:pre-wrap;font-size:12px;">${r.description || '-'}</td>
+        <td>${r.user || '-'}</td>
+        <td><span class="status-badge ${fbStatusClass(r.status)}">${fbStatusLabel(r.status)}</span></td>
+      </tr>
+    `).join('')
+    : '<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:40px;">No feedback submitted yet. Bugs and feature requests from users will appear here.</td></tr>';
 }
 </script>
 </body>
